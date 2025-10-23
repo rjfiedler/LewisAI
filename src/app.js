@@ -1,40 +1,103 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const helmet = require('helmet');
-const cors = require('cors');
 require('dotenv').config();
+const express = require('express');
+const SMSHandler = require('./handlers/smsHandler');
+const RateLimiter = require('./utils/rateLimiter');
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Security middleware
-app.use(helmet());
-app.use(cors());
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+// Initialize handlers
+const smsHandler = new SMSHandler();
+const rateLimiter = new RateLimiter(5, 60000); // 5 requests per minute
+
+// Rate limiting middleware
+const checkRateLimit = (req, res, next) => {
+  const identifier = req.body.From || req.ip;
+  
+  if (rateLimiter.isRateLimited(identifier)) {
+    console.log('⚠️  Rate limit exceeded for:', identifier);
+    return res.status(429).json({
+      success: false,
+      error: 'Too many requests. Please try again later.'
+    });
+  }
+  
+  next();
+};
+
+// Routes
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'LewisAI SMS Service',
+    status: 'running',
+    version: '1.0.0',
+    features: [
+      'SMS messaging via Twilio',
+      'AI responses via OpenAI',
+      'Conversation history storage',
+      'Rate limiting'
+    ]
+  });
 });
 
-// SMS webhook endpoint (to be implemented)
-app.post('/sms', async (req, res) => {
-  // TODO: Implement SMS handling
-  console.log('Received SMS:', req.body);
-  res.status(200).send('OK');
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// Twilio webhook for incoming SMS
+app.post('/sms/webhook', checkRateLimit, (req, res) => {
+  smsHandler.handleIncomingMessage(req, res);
+});
+
+// API endpoint to send SMS
+app.post('/sms/send', checkRateLimit, (req, res) => {
+  smsHandler.sendMessage(req, res);
+});
+
+// Get conversation history
+app.get('/conversations/:phoneNumber', (req, res) => {
+  smsHandler.getConversationHistory(req, res);
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Endpoint not found'
+  });
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something went wrong!');
+  console.error('Error:', err);
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error'
+  });
 });
 
-const PORT = process.env.PORT || 3000;
-
+// Start server
 app.listen(PORT, () => {
-  console.log(`SMS AI Assistant server running on port ${PORT}`);
-  console.log(`Health check available at http://localhost:${PORT}/health`);
+  console.log('🚀 LewisAI SMS Service started');
+  console.log('📱 Server running on port:', PORT);
+  console.log('🌍 Environment:', process.env.NODE_ENV);
+  console.log('');
+  console.log('Available endpoints:');
+  console.log('  GET  / - Service info');
+  console.log('  GET  /health - Health check');
+  console.log('  POST /sms/webhook - Twilio webhook');
+  console.log('  POST /sms/send - Send SMS');
+  console.log('  GET  /conversations/:phoneNumber - Get conversation history');
+  console.log('');
+  console.log('✅ All services initialized and ready!');
 });
 
 module.exports = app;
