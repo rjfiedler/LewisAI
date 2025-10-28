@@ -37,14 +37,23 @@ class DatabaseService {
 
   async saveMessage(conversationId, data) {
     try {
-      const { messageSid, direction, content, fromNumber, toNumber, status } = data;
+      const { 
+        messageSid, 
+        direction, 
+        content, 
+        fromNumber, 
+        toNumber, 
+        status,
+        mediaUrl = null,
+        mediaType = null
+      } = data;
       
       const result = await this.pool.query(
         `INSERT INTO messages 
-        (conversation_id, message_sid, direction, content, from_number, to_number, status) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7) 
+        (conversation_id, message_sid, direction, content, from_number, to_number, status, media_url, media_type) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
         RETURNING *`,
-        [conversationId, messageSid, direction, content, fromNumber, toNumber, status]
+        [conversationId, messageSid, direction, content, fromNumber, toNumber, status, mediaUrl, mediaType]
       );
 
       return result.rows[0];
